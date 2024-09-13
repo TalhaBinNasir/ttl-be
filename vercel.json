@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/index.js": {
-      "runtime": "nodejs18.x" // Choose appropriate runtime version
+      "runtime": "nodejs18.x"
     }
   }
 }
