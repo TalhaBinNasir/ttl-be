@@ -3,6 +3,7 @@ const multer = require("multer");
 const { google } = require("googleapis");
 const fs = require("fs");
 const cors = require("cors");
+const stream = require("stream");
 require("dotenv").config();
 
 const app = express();
@@ -23,14 +24,7 @@ const googleCredentials = {
 };
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: function (req, file, cb) {
-      cb(null, "./uploads");
-    },
-    filename: function (req, file, cb) {
-      cb(null, file.originalname);
-    },
-  }),
+  storage: multer.memoryStorage(),
 });
 
 app.use(
@@ -59,6 +53,7 @@ const auth = new google.auth.GoogleAuth({
 const drive = google.drive({ version: "v3", auth });
 
 // File upload endpoint
+
 app.post(
   "/upload",
   upload.fields([
@@ -68,54 +63,29 @@ app.post(
     { name: "certificateInsurance", maxCount: 1 },
   ]),
   async (req, res) => {
-    console.log(req.files); // Log to check uploaded files
-
     if (!req.files || Object.keys(req.files).length === 0) {
       return res.status(400).send("No files were uploaded.");
     }
 
     try {
-      // Set to keep track of processed file paths
-      const processedFiles = new Set();
-
-      // Prepare an array to hold file upload promises
       const uploadPromises = [];
 
-      // Iterate over each field and its files
       for (const [fieldName, files] of Object.entries(req.files)) {
         files.forEach((file) => {
-          if (!file || !file.path) {
-            console.error(
-              `File path is missing for ${file?.originalname || "unknown file"}`
-            );
-            return; // Skip this file if no path is found
-          }
+          // Convert Buffer to Readable Stream
+          const bufferStream = new stream.PassThrough();
+          bufferStream.end(file.buffer);
 
-          // Check if the file is a duplicate (based on file path or file name)
-          if (processedFiles.has(file.path)) {
-            console.log(`Skipping duplicate file: ${file.originalname}`);
-            return; // Skip duplicate file
-          }
-
-          // Add file path to the set of processed files
-          processedFiles.add(file.path);
-
-          console.log(
-            `Uploading file: ${file.originalname} with path: ${file.path}`
-          );
-
-          // Prepare metadata and media for Google Drive
           const fileMetadata = {
             name: file.originalname,
-            parents: ["1OgdC_oD3obouDOImQlA9f07-mUE_EQsk"],
+            parents: ["1OgdC_oD3obouDOImQlA9f07-mUE_EQsk"], // Replace with your folder ID
           };
 
           const media = {
             mimeType: file.mimetype,
-            body: fs.createReadStream(file.path), // Ensure path is valid
+            body: bufferStream, // Use the stream
           };
 
-          // Create a promise for each file upload
           const uploadPromise = drive.files
             .create({
               resource: fileMetadata,
@@ -124,12 +94,8 @@ app.post(
             })
             .then((fileResponse) => {
               console.log(
-                `${file.originalname} uploaded with ID: ${fileResponse.data.id}`
+                `${file.originalname} uploaded successfully with ID: ${fileResponse.data.id}`
               );
-
-              // Delete the uploaded file from the server
-              fs.unlinkSync(file.path);
-
               return {
                 fieldName,
                 fileId: fileResponse.data.id,
@@ -137,32 +103,19 @@ app.post(
               };
             })
             .catch((error) => {
-              console.error(
-                `Error uploading ${file.originalname} to Google Drive`,
-                error
-              );
-
-              // Cleanup: Delete the file from the server even if upload fails
-              fs.unlinkSync(file.path);
-
+              console.error(`Error uploading ${file.originalname}:`, error);
               return {
                 fieldName,
                 message: `Failed to upload ${file.originalname}.`,
               };
             });
 
-          // Push the promise to the array
           uploadPromises.push(uploadPromise);
         });
       }
 
-      // Wait for all uploads to complete
       const results = await Promise.all(uploadPromises);
-
-      res.status(200).json({
-        success: true,
-        results,
-      });
+      res.status(200).json({ success: true, results });
     } catch (error) {
       console.error("Error processing files", error);
       res.status(500).send("Failed to process files.");
