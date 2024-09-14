@@ -8,17 +8,11 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// Ensure the uploads directory exists
-const UPLOAD_DIR = './uploads';
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-
 const googleCredentials = {
   type: "service_account",
   project_id: process.env.GOOGLE_PROJECT_ID,
   private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID,
-  private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'), // Handle newlines in private_key
+  private_key: process.env.GOOGLE_PRIVATE_KEY,
   client_email: process.env.GOOGLE_CLIENT_EMAIL,
   client_id: process.env.GOOGLE_CLIENT_ID,
   auth_uri: "https://accounts.google.com/o/oauth2/auth",
@@ -31,7 +25,7 @@ const googleCredentials = {
 const upload = multer({
   storage: multer.diskStorage({
     destination: function (req, file, cb) {
-      cb(null, UPLOAD_DIR);
+      cb(null, "./uploads");
     },
     filename: function (req, file, cb) {
       cb(null, file.originalname);
@@ -134,9 +128,7 @@ app.post(
               );
 
               // Delete the uploaded file from the server
-              if (fs.existsSync(file.path)) {
-                fs.unlinkSync(file.path);
-              }
+              fs.unlinkSync(file.path);
 
               return {
                 fieldName,
@@ -151,9 +143,7 @@ app.post(
               );
 
               // Cleanup: Delete the file from the server even if upload fails
-              if (fs.existsSync(file.path)) {
-                fs.unlinkSync(file.path);
-              }
+              fs.unlinkSync(file.path);
 
               return {
                 fieldName,
@@ -181,5 +171,5 @@ app.post(
 );
 
 app.listen(PORT, () => {
-  console.log(`✅ Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
